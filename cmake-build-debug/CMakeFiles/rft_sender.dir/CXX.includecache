@@ -1,0 +1,38 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/david/Programming/Calvin/cs332/rft_sender/main.cpp
+iostream
+-
+fstream
+-
+limits
+-
+sys/types.h
+-
+unistd.h
+-
+sys/socket.h
+-
+netinet/in.h
+-
+arpa/inet.h
+-
+netdb.h
+-
+memory.h
+-
+ifaddrs.h
+-
+net/if.h
+-
+errno.h
+-
+stdlib.h
+-
+
