@@ -1,1 +1,0 @@
-/usr/bin/c++  -g   CMakeFiles/rft_sender.dir/main.cpp.o  -o rft_sender 

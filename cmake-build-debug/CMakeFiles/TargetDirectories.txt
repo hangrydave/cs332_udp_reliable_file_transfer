@@ -1,3 +1,0 @@
-/home/david/Programming/Calvin/cs332/rft_sender/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/david/Programming/Calvin/cs332/rft_sender/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/david/Programming/Calvin/cs332/rft_sender/cmake-build-debug/CMakeFiles/rft_sender.dir
