@@ -14,6 +14,25 @@
 #include <stdlib.h>
 
 #define PACKET_SIZE 1450
+#define DEBUG true
+
+void debug(const char* msg, const char trailing = NULL) {
+    if (!DEBUG)
+        return;
+
+    std::cout << msg;
+    if (trailing)
+        std::cout << trailing;
+}
+
+void debug(const long& msg, const char trailing = NULL) {
+    if (!DEBUG)
+        return;
+
+    std::cout << msg;
+    if (trailing)
+        std::cout << trailing;
+}
 
 // input is null terminated
 long read_num_from_chars(char* char_arr) {
@@ -54,8 +73,7 @@ void send(char* const& hostname, char* const& port_number, char* const& file_buf
     int result = bind(sock, (sockaddr*)&addrListen, sizeof(addrListen));
     if (result == -1)
     {
-        int lasterror = errno;
-        std::cout << "error: " << lasterror;
+        perror("socket error");
         exit(1);
     }
 
@@ -63,33 +81,35 @@ void send(char* const& hostname, char* const& port_number, char* const& file_buf
     result = resolvehelper(hostname, AF_INET, port_number, &addrDest);
     if (result != 0)
     {
-        int lasterror = errno;
-        std::cout << "error: " << lasterror;
+        perror("socket error");
         exit(1);
     }
 
     size_t packet_count = file_length / PACKET_SIZE;
-    size_t leftover_byte_count = file_length % PACKET_SIZE;
+    size_t leftover_byte_count = (file_length % PACKET_SIZE);
     if (leftover_byte_count > 0)
-        packet_count++;
+        packet_count++; // make sure we count those leftover bytes
 
+    size_t packet_size = PACKET_SIZE;
     for (size_t packet_index = 0; packet_index < packet_count; packet_index++) {
-        size_t packet_size;
-        if (packet_index == packet_count - 1) {
+        if (packet_index == packet_count - 1 && leftover_byte_count > 0) {
+            // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
             packet_size = leftover_byte_count;
-        } else {
-            packet_size = PACKET_SIZE;
         }
 
         char* packet_buffer = new char[packet_size];
-        size_t base_index = packet_index * packet_size;
+        size_t base_index = packet_index * PACKET_SIZE;
         for (size_t byte_index = 0; byte_index < packet_size; byte_index++) {
              size_t actual_byte_index = base_index + byte_index;
-             packet_buffer[byte_index] = file_buffer[actual_byte_index];
+             char byte = file_buffer[actual_byte_index];
+             packet_buffer[byte_index] = byte;
         }
+        debug(packet_buffer, '\n');
 
-        int result = sendto(sock, packet_buffer, packet_size, 0, (sockaddr*) &addrDest, sizeof(addrDest));
-        std::cout << result << " bytes sent" << std::endl;
+        int sent_byte_count = sendto(sock, packet_buffer, packet_size, 0, (sockaddr*) &addrDest, sizeof(addrDest));
+
+        debug(sent_byte_count);
+        debug(" bytes sent", '\n');
     }
 }
 
@@ -110,7 +130,6 @@ int main(int argc, char* argv[]) {
     // port num
     char* port_num_arg = argv[2];
     long port_num = read_num_from_chars(port_num_arg);
-    std::cout << port_num << std::endl;
 
     // file path
     char* file_path_arg = argv[3];
