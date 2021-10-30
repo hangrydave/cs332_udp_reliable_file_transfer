@@ -7,7 +7,9 @@
 #include <memory.h>
 #include "common.h"
 
-void send_file(char* const& hostname, const int& port_number, char* const& file_buffer, const size_t& file_length) {
+void send_file(char* const& host, const int& port_number, char* const& file_buffer, const size_t& file_length) {
+    std::cout << "Sending " << file_length << " bytes to " << host << "..." << std::endl;
+
     // useful reference for this stuff:
     // https://people.cs.rutgers.edu/~pxk/417/notes/sockets/udp.html
     // also:
@@ -30,6 +32,7 @@ void send_file(char* const& hostname, const int& port_number, char* const& file_
     if (leftover_byte_count > 0)
         packet_count++; // make sure we count those leftover bytes
 
+    size_t sent_total_len = 0;
     size_t packet_size = PACKET_SIZE;
     for (size_t packet_index = 0; packet_index < packet_count; packet_index++) {
         if (packet_index == packet_count - 1 && leftover_byte_count > 0) {
@@ -44,13 +47,16 @@ void send_file(char* const& hostname, const int& port_number, char* const& file_
              char byte = file_buffer[actual_byte_index];
              packet_buffer[byte_index] = byte;
         }
-        debug(packet_buffer, '\n');
 
-        int sent_byte_count = sendto(socket_fd, packet_buffer, packet_size, 0, (sockaddr*) &server_addr, sizeof(server_addr));
-
-        debug(sent_byte_count);
-        debug(" bytes sent", '\n');
+        int sent_len = sendto(socket_fd, packet_buffer, packet_size, 0, (sockaddr*) &server_addr, sizeof(server_addr));
+        sent_total_len += sent_len;
+        debug("Sent ");
+        debug(sent_len);
+        debug(" bytes to ");
+        debug(host, '\n');
     }
+
+    std::cout << "\nFinished sending; sent " << sent_total_len << " over " << packet_count << " packets." << std::endl;
 }
 
 int main(int argc, char* argv[]) {

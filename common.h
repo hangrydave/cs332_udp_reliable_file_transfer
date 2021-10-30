@@ -5,16 +5,24 @@
 #ifndef RFT_SENDER_COMMON_H
 #define RFT_SENDER_COMMON_H
 
+#include <arpa/inet.h>
+
 #define PACKET_SIZE 1450
-#define DEBUG true
+#define DEBUG false
+#define RECEIVE_TIMEOUT 3
+
+void get_printable_ip_addr(const sockaddr_in& addr, char*& buffer) {
+    int buffer_size = INET_ADDRSTRLEN;
+    buffer = new char[buffer_size];
+    inet_ntop(AF_INET, &addr.sin_addr, buffer, buffer_size);
+}
 
 void debug(const char* msg, const char trailing = NULL) {
-    if (!DEBUG)
-        return;
-
+#if DEBUG
     std::cout << msg;
     if (trailing)
         std::cout << trailing;
+#endif
 }
 
 void debug(const long& msg, const char trailing = NULL) {
