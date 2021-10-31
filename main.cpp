@@ -2,12 +2,25 @@
 #include <fstream>
 #include <limits>
 #include <unistd.h>
-/*#include <sys/socket.h>
-#include <netinet/in.h>*/
 #include <memory.h>
+#include <chrono>
+#include <cstring>
 #include "common.h"
 
-void setup_socket(int port, int& socket_fd, sockaddr_in& receiver_addr, socklen_t& receiver_addr_len) {
+struct s_sender_state {
+
+};
+
+uint32_t get_connection_id() {
+    uint32_t id = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return id;
+}
+
+void setup_socket(
+        int port,
+        int& socket_fd,
+        sockaddr_in& receiver_addr,
+        socklen_t& receiver_addr_len) {
     // useful reference for this stuff:
     // https://people.cs.rutgers.edu/~pxk/417/notes/sockets/udp.html
     // also:
@@ -33,22 +46,35 @@ void setup_socket(int port, int& socket_fd, sockaddr_in& receiver_addr, socklen_
     setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
 }
 
-void send_packet(int start_offset, int packet_size, char* const& file_buffer, int socket_fd, const sockaddr_in& receiver_addr, const socklen_t& receiver_addr_len, long& total_sent_len) {
+int send_packet(
+        char* const& file_buffer,
+        int file_size,
+        int packet_index,
+        int packet_body_size,
+        uint32_t connection_id,
+        int socket_fd,
+        const sockaddr_in& receiver_addr,
+        const socklen_t& receiver_addr_len,
+        long& total_sent_len) {
     // assemble the packet
-    char* packet_buffer = new char[packet_size];
-    size_t base_index = start_offset;
-    for (size_t byte_index = 0; byte_index < packet_size; byte_index++) {
+    char* packet_buffer = new char[PACKET_HEADER_SIZE + packet_body_size];
+
+    // cast the first bytes in packet_buffer to a s_packet_header and set the values
+    s_packet_header* header = reinterpret_cast<s_packet_header*>(packet_buffer);
+    header->connection_id = connection_id;
+    header->packet_num = packet_index;
+    header->total_file_size = file_size;
+
+    // fill the body area of the buffer
+    size_t base_index = packet_index * PACKET_BODY_SIZE;
+    for (size_t byte_index = 0; byte_index < packet_body_size; byte_index++) {
         size_t actual_byte_index = base_index + byte_index;
         char byte = file_buffer[actual_byte_index];
-        packet_buffer[byte_index] = byte;
+        packet_buffer[PACKET_HEADER_SIZE + byte_index] = byte;
     }
 
     // send the packet
-    int sent_len = sendto(socket_fd, packet_buffer, packet_size, 0, (sockaddr*) &receiver_addr, sizeof(receiver_addr));
-    total_sent_len += sent_len;
-    debug("Sent ");
-    debug(sent_len);
-    debug(" bytes");
+    return sendto(socket_fd, packet_buffer, packet_body_size, 0, (sockaddr*) &receiver_addr, sizeof(receiver_addr));
 }
 
 bool get_ack(int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receiver_addr_len) {
@@ -59,11 +85,9 @@ bool get_ack(int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receive
         ack_buffer[0] == ACK[0] &&
         ack_buffer[1] == ACK[1] &&
         ack_buffer[2] == ACK[2]) {
-        debug("Received ACK", '\n');
         return true;
     } else if (received_len == -1) {
         // timeout!
-        std::cout << "\nTimeout waiting for packet receipt confirmation" << std::endl;
     } else {
         // ?????
         std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
@@ -71,33 +95,53 @@ bool get_ack(int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receive
     return false;
 }
 
-void send_file(char* const& host, const int& port, char* const& file_buffer, const size_t& file_length) {
-    std::cout << "Sending " << file_length << " bytes to " << host << "..." << std::endl;
+void send_file(char* const& host, const int& port, char* const& file_buffer, const size_t& file_size) {
+    std::cout << "Sending " << file_size << " bytes to " << host << "..." << std::endl;
 
+    // setup socket
     int socket_fd;
     sockaddr_in receiver_addr;
     socklen_t receiver_addr_len;
     setup_socket(port, socket_fd, receiver_addr, receiver_addr_len);
 
-    size_t packet_count = file_length / PACKET_BODY_SIZE;
-    size_t leftover_byte_count = (file_length % PACKET_BODY_SIZE);
+    // grab a unique connection id
+    uint32_t connection_id = get_connection_id();
+
+    // do some math to figure out packet counts and leftover bytes
+    size_t packet_count = file_size / PACKET_BODY_SIZE;
+    size_t leftover_byte_count = (file_size % PACKET_BODY_SIZE);
     if (leftover_byte_count > 0)
         packet_count++; // make sure we count those leftover bytes
 
     long total_sent_len = 0;
-    size_t packet_size = PACKET_BODY_SIZE;
+    size_t packet_size = PACKET_TOTAL_SIZE;
     for (size_t packet_index = 0; packet_index < packet_count; packet_index++) {
         if (packet_index == packet_count - 1 && leftover_byte_count > 0) {
             // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
-            packet_size = leftover_byte_count;
+            packet_size = PACKET_HEADER_SIZE + leftover_byte_count;
         }
 
-        int start_offset = packet_index * PACKET_BODY_SIZE;
-        send_packet(start_offset, packet_size, file_buffer, socket_fd, receiver_addr, receiver_addr_len, total_sent_len);
+        int sent_count = send_packet(
+                file_buffer,
+                file_size,
+                packet_index,
+                packet_size,
+                connection_id,
+                socket_fd,
+                receiver_addr,
+                receiver_addr_len,
+                total_sent_len);
+
+        total_sent_len += sent_count;
+        debug("Sent ");
+        debug(sent_count);
+        debug(" bytes", '\n');
 
         bool got_ack = get_ack(socket_fd, receiver_addr, receiver_addr_len);
-        if (!got_ack) {
-            std::cout << "exiting" << std::endl;
+        if (got_ack) {
+            debug("Received ACK", '\n');
+        } else {
+            std::cout << "\nTimeout waiting for packet receipt confirmation; exiting" << std::endl;
             break;
         }
     }
