@@ -160,6 +160,7 @@ int get_new_packet_size(int packet_index, int packets_to_send_count, int leftove
 /** Handle an ACK packet coming from the receiver. **/
 void handle_ack(
         int& packet_index,
+        int& total_packets_sent_count,
         int& previously_timed_out_ack_packet,
         int& repeated_ack_timeout_counter,
         int& previously_acked_packet_index,
@@ -191,6 +192,10 @@ void handle_ack(
 
             // revert back to the packet after the previously acked one and reset the counter
             ack_gap_counter = 0;
+
+            // there are some packets whose data is now nullified; account for that in the total of packets sent
+            total_packets_sent_count -= packet_index - previously_acked_packet_index;
+
             previously_timed_out_ack_packet = packet_index;
             packet_index = previously_acked_packet_index - 1;
             debug("Rewinding to packet ");
@@ -263,6 +268,7 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
             // get ack
             handle_ack(
                     packet_index,
+                    total_packets_sent_count,
                     previously_timed_out_ack_packet,
                     repeated_ack_timeout_counter,
                     previously_acked_packet_index,
