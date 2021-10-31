@@ -267,7 +267,7 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
 
 int main(int argc, char* argv[]) {
     if (argc > 4) {
-        std::cout << "You provided too many arguments; only the first 2 will be used.\n";
+        std::cout << "You provided too many arguments; only the first 3 will be used.\n";
     }
 
     if (argc < 4) {
