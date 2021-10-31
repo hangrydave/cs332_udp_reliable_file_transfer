@@ -10,19 +10,27 @@
 #define PACKET_HEADER_SIZE 12
 #define PACKET_BODY_SIZE 1450
 #define PACKET_TOTAL_SIZE PACKET_HEADER_SIZE + PACKET_BODY_SIZE
+
 #define DEBUG true
 #define FILE_PACKET_RECEIVE_TIMEOUT 99999
 #define ACK_RECEIVE_TIMEOUT 99999
-#define ACK "ACK"
-#define ACK_LEN 3
+//#define ACK "ACK"
+//#define ACK_LEN 3
+#define ACK_SIZE 8
 
 struct s_packet_header {
     // I use int32_t to remind myself that these are 4 bytes each
     uint32_t connection_id;
-    int32_t total_file_size;
+    uint32_t total_file_size;
     int32_t packet_num;
 };
 static_assert(sizeof(s_packet_header) == PACKET_HEADER_SIZE, "s_packet_header != 12");
+
+struct s_ack {
+    uint32_t connection_id;
+    uint32_t packet_num;
+};
+static_assert(sizeof(s_ack) == ACK_SIZE, "s_ack != 8");
 
 void get_printable_ip_addr(const sockaddr_in& addr, char*& buffer) {
     int buffer_size = INET_ADDRSTRLEN;

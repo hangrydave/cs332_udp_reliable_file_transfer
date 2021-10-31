@@ -77,14 +77,21 @@ int send_packet(
     return sendto(socket_fd, packet_buffer, packet_body_size, 0, (sockaddr*) &receiver_addr, sizeof(receiver_addr));
 }
 
-bool get_ack(int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receiver_addr_len) {
+bool get_ack(int connection_id, int packet_num, int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receiver_addr_len) {
     // listen for an ack
-    char ack_buffer[ACK_LEN];
-    int received_len = recvfrom(socket_fd, ack_buffer, sizeof(ack_buffer), 0, (sockaddr*) &receiver_addr, &receiver_addr_len);
-    if (received_len == ACK_LEN &&
-        ack_buffer[0] == ACK[0] &&
-        ack_buffer[1] == ACK[1] &&
-        ack_buffer[2] == ACK[2]) {
+//    char ack_buffer[ACK_SIZE];
+    s_ack ack;
+    int received_len = recvfrom(socket_fd, (void*) &ack, ACK_SIZE, 0, (sockaddr*) &receiver_addr, &receiver_addr_len);
+//    if (received_len == ACK_LEN &&
+//        ack_buffer[0] == ACK[0] &&
+//        ack_buffer[1] == ACK[1] &&
+//        ack_buffer[2] == ACK[2]) {
+    if (ack.packet_num == packet_num &&
+        ack.connection_id == connection_id) {
+        debug("ACK received: packet_num=");
+        debug(ack.packet_num);
+        debug(", connection_id=");
+        debug(ack.connection_id, '\n');
         return true;
     } else if (received_len == -1) {
         // timeout!
@@ -121,10 +128,13 @@ void send_file(char* const& host, const int& port, char* const& file_buffer, con
             packet_size = PACKET_HEADER_SIZE + leftover_byte_count;
         }
 
+        // for clarity's sake
+        int packet_num = packet_index;
+
         int sent_count = send_packet(
                 file_buffer,
                 file_size,
-                packet_index,
+                packet_num,
                 packet_size,
                 connection_id,
                 socket_fd,
@@ -137,9 +147,10 @@ void send_file(char* const& host, const int& port, char* const& file_buffer, con
         debug(sent_count);
         debug(" bytes", '\n');
 
-        bool got_ack = get_ack(socket_fd, receiver_addr, receiver_addr_len);
+        // get ack
+        bool got_ack = get_ack(connection_id, packet_num, socket_fd, receiver_addr, receiver_addr_len);
         if (got_ack) {
-            debug("Received ACK", '\n');
+//            debug("Received ACK", '\n');
         } else {
             std::cout << "\nTimeout waiting for packet receipt confirmation; exiting" << std::endl;
             break;
