@@ -7,6 +7,7 @@
 #include <memory.h>
 #include "../common.h"
 
+#define FILE_PACKET_RECEIVE_TIMEOUT 1000    // milliseconds
 #define TESTING_UNRELIABILITY false
 
 /** Write the data in a char buffer to a file. **/
@@ -203,6 +204,10 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
             char* addr;
             get_printable_address(remote_addr, addr);
             std::cout << "Started receiving from " << addr << "..." << std::endl;
+
+            // since we've received the first packet, we can now set a timeout to exit if we stop hearing from the sender
+            tv.tv_sec = FILE_PACKET_RECEIVE_TIMEOUT / 1000;
+            setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
         } else if (packet_header->connection_id != first_connection_id) {
             // different connection; ignore
             continue;
