@@ -5,7 +5,7 @@
 #include <memory.h>
 #include <chrono>
 #include <netdb.h>
-#include "common.h"
+#include "../common.h"
 
 #define ACK_TIMEOUTS_BEFORE_EXIT 5
 #define SUCCESS_ACK 0
