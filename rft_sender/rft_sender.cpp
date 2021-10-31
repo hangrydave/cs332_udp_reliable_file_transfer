@@ -75,7 +75,6 @@ void setup_resources(char* const& host, char* const& port, s_sender_resources& r
     // set timeout for acks
     timeval tv {};
     tv.tv_sec = ACK_RECEIVE_TIMEOUT / 1000;
-    tv.tv_usec = 0;
     setsockopt(resources.socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
 }
 
@@ -186,7 +185,8 @@ void handle_ack(
                 repeated_ack_timeout_counter = 0;
             }
 
-            std::cout << "\nTimeout waiting for ACK at packet " << packet_index << std::endl;
+            debug("Timeout waiting for ACK at packet ");
+            debug(packet_index, '\n');
 
             // revert back to the packet after the previously acked one and reset the counter
             ack_gap_counter = 0;
