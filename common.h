@@ -12,7 +12,7 @@
 #define PACKET_BODY_SIZE 1450
 #define PACKET_TOTAL_SIZE PACKET_HEADER_SIZE + PACKET_BODY_SIZE
 
-#define DEBUG false
+#define DEBUG true
 #define FILE_PACKET_RECEIVE_TIMEOUT 1000    // milliseconds
 #define ACK_RECEIVE_TIMEOUT 1000            // milliseconds
 #define ACK_SIZE 8

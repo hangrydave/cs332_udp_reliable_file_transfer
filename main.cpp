@@ -185,14 +185,15 @@ void handle_ack(
             std::cout << "\nTimeout waiting for ACK at packet " << packet_index << std::endl;
 
             // revert back to the packet after the previously acked one and reset the counter
-            ack_gap_counter = 1;
+            ack_gap_counter = 0;
             previously_timed_out_ack_packet = packet_index;
-            packet_index = previously_acked_packet_index;
+            packet_index = previously_acked_packet_index - 1;
             debug("Rewinding to packet ");
             debug(packet_index);
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
         case ERROR_ACK_OTHER:
+            debug("unknown error while dealing with ACK", '\n');
             break;
         default:
             break;
@@ -227,7 +228,9 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
         packet_size = get_new_packet_size(packet_index, packets_to_send_count, leftover_byte_count);
 
         // does this packet need an ack?
-        bool needs_ack = packet_index - previously_acked_packet_index == ack_gap_counter;
+        bool needs_ack =
+                packet_index == packets_to_send_count - 1 ||
+                packet_index - previously_acked_packet_index == ack_gap_counter;
 
         // send the dang thing
         int sent_count = send_packet(
