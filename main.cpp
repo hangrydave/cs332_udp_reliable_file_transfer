@@ -4,66 +4,86 @@
 #include <unistd.h>
 #include <memory.h>
 #include <chrono>
-#include <cstring>
 #include "common.h"
 
-struct s_sender_state {
+#define SUCCESS_ACK 0
+#define ERROR_ACK_TIMEOUT -1
+#define ERROR_ACK_OTHER -2
 
+struct s_sender_resources {
+    size_t file_size;
+    int socket_fd;
+    int connection_id;
+    sockaddr_in receiver_addr;
+    socklen_t receiver_addr_len;
 };
 
 uint32_t get_connection_id() {
-    uint32_t id = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    uint32_t id = get_current_millisecond();
     return id;
 }
 
-void setup_socket(
-        int port,
-        int& socket_fd,
-        sockaddr_in& receiver_addr,
-        socklen_t& receiver_addr_len) {
-    // useful reference for this stuff:
+void setup_resources(int port, s_sender_resources& resources) {
+    resources = {};
+
+    // grab a unique connection id
+    resources.connection_id = get_connection_id();
+
+    // useful reference for networking stuff:
     // https://people.cs.rutgers.edu/~pxk/417/notes/sockets/udp.html
     // also:
     // http://beej.us/guide/bgnet/
-    socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    resources.socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
 
-    receiver_addr = {};
-    receiver_addr_len = sizeof(receiver_addr);
+    sockaddr_in receiver_addr = {};
+    resources.receiver_addr_len = sizeof(receiver_addr);
 
-    // interesting stack oveflow post on the (void*) cast here:
+    // interesting stack overflow post on the (void*) cast here:
     // https://stackoverflow.com/questions/16534628/in-c-is-casting-to-void-not-needed-inadvisable-for-memcpy-just-as-it-is-not
     memset((void*) &receiver_addr, 0, sizeof(receiver_addr));
     receiver_addr.sin_family = AF_INET;
     receiver_addr.sin_port = htons(port);
 
-    // might need this later
-    // receiver_addr.sin_addr.s_addr = INADDR_ANY;
+    resources.receiver_addr = receiver_addr;
 
     // set timeout for acks
     timeval tv {};
-    tv.tv_sec = ACK_RECEIVE_TIMEOUT;
+    tv.tv_sec = ACK_RECEIVE_TIMEOUT / 1000;
     tv.tv_usec = 0;
-    setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
+    setsockopt(resources.socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
 }
 
 int send_packet(
         char* const& file_buffer,
-        int file_size,
+        uint32_t file_size,
         int packet_index,
         int packet_body_size,
-        uint32_t connection_id,
-        int socket_fd,
-        const sockaddr_in& receiver_addr,
-        const socklen_t& receiver_addr_len,
+        bool request_ack,
+        const s_sender_resources& resources,
+//        uint32_t connection_id,
+//        int socket_fd,
+//        const sockaddr_in& receiver_addr,
+//        const socklen_t& receiver_addr_len,
         long& total_sent_len) {
     // assemble the packet
     char* packet_buffer = new char[PACKET_HEADER_SIZE + packet_body_size];
 
     // cast the first bytes in packet_buffer to a s_packet_header and set the values
     s_packet_header* header = reinterpret_cast<s_packet_header*>(packet_buffer);
-    header->connection_id = connection_id;
+    header->connection_id = resources.connection_id;
     header->packet_num = packet_index;
     header->total_file_size = file_size;
+    header->ack = request_ack;
+
+    debug("packet header: ");
+    debug("connection_id=");
+    debug(header->connection_id);
+    debug(", packet_num=");
+    debug(header->packet_num);
+    debug(", total_file_size=");
+    debug(header->total_file_size);
+    debug(", ack=");
+    debug(header->ack, '\n');
 
     // fill the body area of the buffer
     size_t base_index = packet_index * PACKET_BODY_SIZE;
@@ -74,56 +94,68 @@ int send_packet(
     }
 
     // send the packet
-    return sendto(socket_fd, packet_buffer, packet_body_size, 0, (sockaddr*) &receiver_addr, sizeof(receiver_addr));
+    return sendto(
+            resources.socket_fd,
+            packet_buffer,
+            packet_body_size,
+            0,
+            (sockaddr*) &resources.receiver_addr,
+            sizeof(resources.receiver_addr));
 }
 
-bool get_ack(int connection_id, int packet_num, int socket_fd, const sockaddr_in& receiver_addr, socklen_t& receiver_addr_len) {
-    // listen for an ack
-//    char ack_buffer[ACK_SIZE];
+int get_ack(int packet_num, s_sender_resources& resources) {
     s_ack ack;
-    int received_len = recvfrom(socket_fd, (void*) &ack, ACK_SIZE, 0, (sockaddr*) &receiver_addr, &receiver_addr_len);
-//    if (received_len == ACK_LEN &&
-//        ack_buffer[0] == ACK[0] &&
-//        ack_buffer[1] == ACK[1] &&
-//        ack_buffer[2] == ACK[2]) {
+    int received_len = recvfrom(
+            resources.socket_fd,
+            (void*) &ack,
+            ACK_SIZE,
+            0,
+            (sockaddr*) &resources.receiver_addr,
+            &resources.receiver_addr_len);
+
     if (ack.packet_num == packet_num &&
-        ack.connection_id == connection_id) {
+        ack.connection_id == resources.connection_id) {
         debug("ACK received: packet_num=");
         debug(ack.packet_num);
         debug(", connection_id=");
         debug(ack.connection_id, '\n');
-        return true;
+        return SUCCESS_ACK;
     } else if (received_len == -1) {
         // timeout!
-    } else {
-        // ?????
-        std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
+        return ERROR_ACK_TIMEOUT;
     }
-    return false;
+    // ?????
+    return ERROR_ACK_OTHER;
 }
 
-void send_file(char* const& host, const int& port, char* const& file_buffer, const size_t& file_size) {
+void send_file(
+        char* const& host,
+        int port,
+        char* const& file_buffer,
+        size_t file_size) {
     std::cout << "Sending " << file_size << " bytes to " << host << "..." << std::endl;
 
     // setup socket
-    int socket_fd;
-    sockaddr_in receiver_addr;
-    socklen_t receiver_addr_len;
-    setup_socket(port, socket_fd, receiver_addr, receiver_addr_len);
+    s_sender_resources resources;
+//    int socket_fd;
+//    sockaddr_in receiver_addr;
+//    socklen_t receiver_addr_len;
+    setup_resources(port, resources);//socket_fd, receiver_addr, receiver_addr_len);
 
-    // grab a unique connection id
-    uint32_t connection_id = get_connection_id();
+    // ack things
+    int ack_gap_counter = 0;
+    size_t previously_acked_packet_index = 0;
 
     // do some math to figure out packet counts and leftover bytes
-    size_t packet_count = file_size / PACKET_BODY_SIZE;
+    size_t packets_to_send_count = file_size / PACKET_BODY_SIZE;
     size_t leftover_byte_count = (file_size % PACKET_BODY_SIZE);
     if (leftover_byte_count > 0)
-        packet_count++; // make sure we count those leftover bytes
+        packets_to_send_count++; // make sure we count those leftover bytes
 
     long total_sent_len = 0;
     size_t packet_size = PACKET_TOTAL_SIZE;
-    for (size_t packet_index = 0; packet_index < packet_count; packet_index++) {
-        if (packet_index == packet_count - 1 && leftover_byte_count > 0) {
+    for (size_t packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
+        if (packet_index == packets_to_send_count - 1 && leftover_byte_count > 0) {
             // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
             packet_size = PACKET_HEADER_SIZE + leftover_byte_count;
         }
@@ -131,33 +163,63 @@ void send_file(char* const& host, const int& port, char* const& file_buffer, con
         // for clarity's sake
         int packet_num = packet_index;
 
+        // does this packet need an ack?
+        bool needs_ack = packet_index - previously_acked_packet_index == ack_gap_counter;
+
+        // send the dang thing
         int sent_count = send_packet(
                 file_buffer,
                 file_size,
                 packet_num,
                 packet_size,
-                connection_id,
-                socket_fd,
-                receiver_addr,
-                receiver_addr_len,
+                needs_ack,
+                resources,
+//                connection_id,
+//                socket_fd,
+//                receiver_addr,
+//                receiver_addr_len,
                 total_sent_len);
 
+        if (sent_count < 0) {
+            std::cout << "Error sending packet; exiting" << std::endl;
+            exit(1);
+        }
+
         total_sent_len += sent_count;
+
         debug("Sent ");
         debug(sent_count);
         debug(" bytes", '\n');
 
-        // get ack
-        bool got_ack = get_ack(connection_id, packet_num, socket_fd, receiver_addr, receiver_addr_len);
-        if (got_ack) {
-//            debug("Received ACK", '\n');
-        } else {
-            std::cout << "\nTimeout waiting for packet receipt confirmation; exiting" << std::endl;
-            break;
+        if (needs_ack) {
+            // get ack
+            int ack_result = get_ack(packet_num, resources);
+            switch (ack_result) {
+                case SUCCESS_ACK:
+                    previously_acked_packet_index = packet_index;
+                    ack_gap_counter++;
+
+                    debug("ACK gap=");
+                    debug(ack_gap_counter, '\n');
+                    break;
+                case ERROR_ACK_TIMEOUT:
+                    std::cout << "\nTimeout waiting for ACK at packet " << packet_num << std::endl;
+
+                    // revert back to the packet after the previously acked one
+                    ack_gap_counter = 0;
+                    packet_index = previously_acked_packet_index;
+                    debug("Rewinding to packet ");
+                    debug(packet_index);
+                    debug(" and resetting ack_gap_counter to 0", '\n');
+                    break;
+                case ERROR_ACK_OTHER:
+                    std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
+                    break;
+            }
         }
     }
 
-    std::cout << "\nFinished sending; sent " << total_sent_len << " over " << packet_count << " packets." << std::endl;
+    std::cout << "\nFinished sending; sent " << file_size << " bytes over " << packets_to_send_count << " packets." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
