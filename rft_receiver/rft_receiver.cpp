@@ -8,6 +8,7 @@
 #include "../common.h"
 
 #define FILE_PACKET_RECEIVE_TIMEOUT 1000    // milliseconds
+#define DUPLICATE_ACKS_UNTIL_EXIT 10
 #define TESTING_UNRELIABILITY false
 
 /** Write the data in a char buffer to a file. **/
@@ -175,6 +176,9 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
     int previous_packet_num = 0;
     int first_connection_id = -1;
 
+    int previous_ack_packet_num = -1;
+    int duplicate_ack_send_counter = 0;
+
     while (true) {
         // receive packet
         s_packet_header* packet_header;
@@ -226,6 +230,18 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
 
         // handle sending or not sending an ACK packet
         handle_ack(socket_fd, remote_addr, packet_header);
+        if (packet_header->packet_num == previous_ack_packet_num) {
+            duplicate_ack_send_counter++;
+        } else {
+            previous_ack_packet_num = packet_header->packet_num;
+            duplicate_ack_send_counter = 0;
+        }
+
+        // if we've sent the same ack DUPLICATE_ACKS_UNTIL_EXIT times in a row, exit
+        if (duplicate_ack_send_counter == DUPLICATE_ACKS_UNTIL_EXIT) {
+            std::cout << "Sender not responding; exiting" << std::endl;
+            exit(1);
+        }
 
         // this is the packet with leftover bytes and thus the last packet; we can exit
         if (packet_body_size != PACKET_BODY_SIZE) {

@@ -197,7 +197,8 @@ void handle_ack(
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
         case ERROR_ACK_OTHER:
-            debug("unknown error while dealing with ACK", '\n');
+            debug("Network error has occurred; exiting", '\n');
+            exit(1);
             break;
         default:
             break;
