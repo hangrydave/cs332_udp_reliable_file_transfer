@@ -85,7 +85,7 @@ int send_packet(
         int packet_body_size,
         bool request_ack,
         const s_sender_resources& resources,
-        long& total_sent_len) {
+        int& total_sent_len) {
     // assemble the packet
     char* packet_buffer = new char[PACKET_HEADER_SIZE + packet_body_size];
 
@@ -197,16 +197,6 @@ void handle_ack(
             debug(packet_index);
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
-//        case ERROR_ACK_OTHER:
-//            debug("ACK error; trying again for ACK for packet ");
-//            debug(packet_index, '\n');
-//            handle_ack(packet_index,
-//                       previously_timed_out_ack_packet,
-//                       repeated_ack_timeout_counter,
-//                       previously_acked_packet_index,
-//                       ack_gap_counter,
-//                       resources);
-            break;
         default:
             break;
     }
@@ -234,7 +224,9 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
     if (leftover_byte_count > 0)
         packets_to_send_count++; // make sure we count those leftover bytes
 
-    long total_sent_len = 0;
+    int total_sent_len = 0;
+    int total_packets_sent_count = 0;
+
     int packet_size;
     for (int packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
         packet_size = get_new_packet_size(packet_index, packets_to_send_count, leftover_byte_count);
@@ -252,6 +244,8 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
                 needs_ack,
                 resources,
                 total_sent_len);
+
+        total_packets_sent_count++;
 
         if (sent_count < 0) {
             // Houston, we've got a problem
@@ -277,7 +271,7 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
         }
     }
 
-    std::cout << "\nFinished sending; sent " << file_size << " bytes over " << packets_to_send_count << " packets." << std::endl;
+    std::cout << "\nFinished sending; sent " << file_size << " bytes over " << total_packets_sent_count << " packets." << std::endl;
 }
 
 int main(int argc, char* argv[]) {
