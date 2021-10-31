@@ -307,6 +307,7 @@ int main(int argc, char* argv[]) {
 
     char* file_buffer = new char[file_length];
     file_stream.read(file_buffer, file_length);
+    file_stream.close();
 
     send_file(host_address_arg, port_num_arg, file_buffer, file_length);
     return 0;

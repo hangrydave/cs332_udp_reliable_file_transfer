@@ -278,6 +278,7 @@ int main(int argc, char* argv[]) {
     std::ofstream file_output_stream;
     file_output_stream.open(file_path, std::ios::binary);
     write_buffer_to_file(file_buffer, file_size, file_output_stream);
+    file_output_stream.flush();
     file_output_stream.close();
 
     // print some final info
