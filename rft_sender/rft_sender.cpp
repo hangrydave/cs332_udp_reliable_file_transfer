@@ -175,6 +175,7 @@ void handle_ack(
             debug(ack_gap_counter, '\n');
             break;
         case ERROR_ACK_TIMEOUT:
+        case ERROR_ACK_OTHER:
             debug("Timeout waiting for ACK at packet ");
             debug(packet_index, '\n');
 
@@ -196,15 +197,15 @@ void handle_ack(
             debug(packet_index);
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
-        case ERROR_ACK_OTHER:
-            debug("ACK error; trying again for ACK for packet ");
-            debug(packet_index, '\n');
-            handle_ack(packet_index,
-                       previously_timed_out_ack_packet,
-                       repeated_ack_timeout_counter,
-                       previously_acked_packet_index,
-                       ack_gap_counter,
-                       resources);
+//        case ERROR_ACK_OTHER:
+//            debug("ACK error; trying again for ACK for packet ");
+//            debug(packet_index, '\n');
+//            handle_ack(packet_index,
+//                       previously_timed_out_ack_packet,
+//                       repeated_ack_timeout_counter,
+//                       previously_acked_packet_index,
+//                       ack_gap_counter,
+//                       resources);
             break;
         default:
             break;
