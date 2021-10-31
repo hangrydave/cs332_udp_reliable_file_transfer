@@ -12,7 +12,6 @@
 #define PACKET_BODY_SIZE 1450
 #define PACKET_TOTAL_SIZE PACKET_HEADER_SIZE + PACKET_BODY_SIZE
 
-#define DEBUG true
 #define FILE_PACKET_RECEIVE_TIMEOUT 1000    // milliseconds
 #define ACK_RECEIVE_TIMEOUT 1000            // milliseconds
 #define ACK_SIZE 8
@@ -55,12 +54,11 @@ void debug(const char* msg, const char trailing = NULL) {
 }
 
 void debug(const long& msg, const char trailing = NULL) {
-    if (!DEBUG)
-        return;
-
+#if DEBUG
     std::cout << msg;
     if (trailing)
         std::cout << trailing;
+#endif
 }
 
 #endif //RFT_SENDER_COMMON_H
