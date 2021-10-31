@@ -197,8 +197,14 @@ void handle_ack(
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
         case ERROR_ACK_OTHER:
-            debug("Network error has occurred; exiting", '\n');
-            exit(1);
+            debug("ACK error; trying again for ACK for packet ");
+            debug(packet_index, '\n');
+            handle_ack(packet_index,
+                       previously_timed_out_ack_packet,
+                       repeated_ack_timeout_counter,
+                       previously_acked_packet_index,
+                       ack_gap_counter,
+                       resources);
             break;
         default:
             break;
