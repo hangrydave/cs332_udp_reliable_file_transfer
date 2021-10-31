@@ -160,6 +160,7 @@ int get_new_packet_size(int packet_index, int packets_to_send_count, int leftove
 /** Handle an ACK packet coming from the receiver. **/
 void handle_ack(
         int& packet_index,
+        bool is_last_packet,
         int& previously_timed_out_ack_packet,
         int& repeated_ack_timeout_counter,
         int& previously_acked_packet_index,
@@ -181,7 +182,7 @@ void handle_ack(
 
             if (packet_index == previously_timed_out_ack_packet) {
                 repeated_ack_timeout_counter++;
-                if (repeated_ack_timeout_counter == ACK_TIMEOUTS_BEFORE_EXIT) {
+                if (repeated_ack_timeout_counter == ACK_TIMEOUTS_BEFORE_EXIT && is_last_packet) {
                     std::cout << "\nFile transfer success unknown" << std::endl;
                     exit(1);
                 }
@@ -231,10 +232,10 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
     for (int packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
         packet_size = get_new_packet_size(packet_index, packets_to_send_count, leftover_byte_count);
 
+        bool is_last_packet = packet_index == packets_to_send_count - 1;
+
         // does this packet need an ack?
-        bool needs_ack =
-                packet_index == packets_to_send_count - 1 ||
-                packet_index - previously_acked_packet_index == ack_gap_counter;
+        bool needs_ack = is_last_packet || packet_index - previously_acked_packet_index == ack_gap_counter;
 
         // send the dang thing
         int sent_count = send_packet(
@@ -261,6 +262,7 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
             // get ack
             handle_ack(
                     packet_index,
+                    is_last_packet,
                     previously_timed_out_ack_packet,
                     repeated_ack_timeout_counter,
                     previously_acked_packet_index,
