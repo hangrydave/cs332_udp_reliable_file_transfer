@@ -175,18 +175,18 @@ void handle_ack(
             debug(ack_gap_counter, '\n');
             break;
         case ERROR_ACK_TIMEOUT:
+            debug("Timeout waiting for ACK at packet ");
+            debug(packet_index, '\n');
+
             if (packet_index == previously_timed_out_ack_packet) {
                 repeated_ack_timeout_counter++;
-                if (repeated_ack_timeout_counter == ACK_TIMEOUTS_BEFORE_EXIT - 1) {
+                if (repeated_ack_timeout_counter == ACK_TIMEOUTS_BEFORE_EXIT) {
                     std::cout << "\nFile transfer success unknown" << std::endl;
                     exit(1);
                 }
             } else {
                 repeated_ack_timeout_counter = 0;
             }
-
-            debug("Timeout waiting for ACK at packet ");
-            debug(packet_index, '\n');
 
             // revert back to the packet after the previously acked one and reset the counter
             ack_gap_counter = 0;
