@@ -199,10 +199,6 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
         if (first_connection_id == -1) {
             // grab the very first connection id
             first_connection_id = packet_header->connection_id;
-
-            // since we've received the first packet, we can now set a timeout to exit if we stop hearing from the sender
-            tv.tv_sec = FILE_PACKET_RECEIVE_TIMEOUT / 1000;
-            setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
         } else if (packet_header->connection_id != first_connection_id) {
             // different connection; ignore
             continue;
