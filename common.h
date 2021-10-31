@@ -7,9 +7,14 @@
 
 #include <arpa/inet.h>
 
-#define PACKET_SIZE 1450
+#define PACKET_HEADER_SIZE 12
+#define PACKET_BODY_SIZE 1450
+#define PACKET_TOTAL_SIZE PACKET_HEADER_SIZE + PACKET_BODY_SIZE
 #define DEBUG false
-#define RECEIVE_TIMEOUT 3
+#define FILE_PACKET_RECEIVE_TIMEOUT 3
+#define ACK_RECEIVE_TIMEOUT 3
+#define ACK "ACK"
+#define ACK_LEN 3
 
 void get_printable_ip_addr(const sockaddr_in& addr, char*& buffer) {
     int buffer_size = INET_ADDRSTRLEN;
