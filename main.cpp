@@ -4,18 +4,21 @@
 #include <unistd.h>
 #include <memory.h>
 #include <chrono>
+#include <netdb.h>
 #include "common.h"
 
+#define ACK_TIMEOUTS_BEFORE_EXIT 5
 #define SUCCESS_ACK 0
 #define ERROR_ACK_TIMEOUT -1
 #define ERROR_ACK_OTHER -2
 
 struct s_sender_resources {
-    size_t file_size;
+    int file_size;
     int socket_fd;
     int connection_id;
     sockaddr_in receiver_addr;
     socklen_t receiver_addr_len;
+    sockaddr_storage receiver_addr_2;
 };
 
 /** Get a unique connection id. **/
@@ -25,7 +28,9 @@ uint32_t get_connection_id() {
 }
 
 /** Setup some networking resources. **/
-void setup_resources(int port, s_sender_resources& resources) {
+void setup_resources(char* const& host, char* const& port, s_sender_resources& resources) {
+    int port_num = std::stoi(port);
+
     resources = {};
 
     // grab a unique connection id
@@ -44,9 +49,24 @@ void setup_resources(int port, s_sender_resources& resources) {
     // https://stackoverflow.com/questions/16534628/in-c-is-casting-to-void-not-needed-inadvisable-for-memcpy-just-as-it-is-not
     memset((void*) &receiver_addr, 0, sizeof(receiver_addr));
     receiver_addr.sin_family = AF_INET;
-    receiver_addr.sin_port = htons(port);
+    receiver_addr.sin_port = htons(port_num);
 
     resources.receiver_addr = receiver_addr;
+
+    resources.receiver_addr_2 = {};
+    addrinfo* result_list = NULL;
+    addrinfo hints = {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    int result = getaddrinfo(host, port, &hints, &result_list);
+    if (result == 0)
+    {
+        memcpy(&resources.receiver_addr_2, result_list->ai_addr, result_list->ai_addrlen);
+        freeaddrinfo(result_list);
+    } else {
+        std::cout << "Encountered error; is \"" << host << "\" a valid hostname?" << std::endl;
+        exit(1);
+    }
 
     // set timeout for acks
     timeval tv {};
@@ -84,9 +104,9 @@ int send_packet(
     debug(header->ack, '\n');
 
     // fill the body area of the buffer
-    size_t base_index = packet_index * PACKET_BODY_SIZE;
-    for (size_t byte_index = 0; byte_index < packet_body_size; byte_index++) {
-        size_t actual_byte_index = base_index + byte_index;
+    int base_index = packet_index * PACKET_BODY_SIZE;
+    for (int byte_index = 0; byte_index < packet_body_size; byte_index++) {
+        int actual_byte_index = base_index + byte_index;
         char byte = file_buffer[actual_byte_index];
         packet_buffer[PACKET_HEADER_SIZE + byte_index] = byte;
     }
@@ -97,8 +117,8 @@ int send_packet(
             packet_buffer,
             packet_body_size,
             0,
-            (sockaddr*) &resources.receiver_addr,
-            sizeof(resources.receiver_addr));
+            (sockaddr*) &resources.receiver_addr_2,
+            sizeof(resources.receiver_addr_2));
 }
 
 /** Wait for an ACK packet. **/
@@ -126,7 +146,7 @@ int get_ack(int packet_num, s_sender_resources& resources) {
 }
 
 /** Figure out what size a new packet should be. **/
-size_t get_new_packet_size(size_t packet_index, size_t packets_to_send_count, size_t leftover_byte_count) {
+int get_new_packet_size(int packet_index, int packets_to_send_count, int leftover_byte_count) {
     if (packet_index == packets_to_send_count - 1 && leftover_byte_count > 0) {
         // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
         return PACKET_HEADER_SIZE + leftover_byte_count;
@@ -135,7 +155,13 @@ size_t get_new_packet_size(size_t packet_index, size_t packets_to_send_count, si
 }
 
 /** Handle an ACK packet coming from the receiver. **/
-void handle_ack(size_t packet_index, size_t& previously_acked_packet_index, int& ack_gap_counter, s_sender_resources& resources) {
+void handle_ack(
+        int& packet_index,
+        int& previously_timed_out_ack_packet,
+        int& repeated_ack_timeout_counter,
+        int& previously_acked_packet_index,
+        int& ack_gap_counter,
+        s_sender_resources& resources) {
     int ack_result = get_ack(packet_index, resources);
     switch (ack_result) {
         case SUCCESS_ACK:
@@ -146,17 +172,27 @@ void handle_ack(size_t packet_index, size_t& previously_acked_packet_index, int&
             debug(ack_gap_counter, '\n');
             break;
         case ERROR_ACK_TIMEOUT:
+            if (packet_index == previously_timed_out_ack_packet) {
+                repeated_ack_timeout_counter++;
+                if (repeated_ack_timeout_counter == ACK_TIMEOUTS_BEFORE_EXIT - 1) {
+                    std::cout << "\nFile transfer success unknown" << std::endl;
+                    exit(1);
+                }
+            } else {
+                repeated_ack_timeout_counter = 0;
+            }
+
             std::cout << "\nTimeout waiting for ACK at packet " << packet_index << std::endl;
 
-            // revert back to the packet after the previously acked one
-            ack_gap_counter = 0;
+            // revert back to the packet after the previously acked one and reset the counter
+            ack_gap_counter = 1;
+            previously_timed_out_ack_packet = packet_index;
             packet_index = previously_acked_packet_index;
             debug("Rewinding to packet ");
             debug(packet_index);
             debug(" and resetting ack_gap_counter to 0", '\n');
             break;
         case ERROR_ACK_OTHER:
-            std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
             break;
         default:
             break;
@@ -164,27 +200,30 @@ void handle_ack(size_t packet_index, size_t& previously_acked_packet_index, int&
 }
 
 /** Send a file to a receiver. **/
-void send_file(char* const& host, int port, char* const& file_buffer, size_t file_size) {
-    std::cout << "Sending " << file_size << " bytes to " << host << "..." << std::endl;
-
+void send_file(char* const& host, char* const& port, char* const& file_buffer, int file_size) {
     // setup socket
     s_sender_resources resources = {};
-    setup_resources(port, resources);
+    setup_resources(host, port, resources);
     resources.file_size = file_size;
 
-    // ack things
+    std::cout << "Sending " << file_size << " bytes to " << host << "..." << std::endl;
+
+    // initialize ack things
     int ack_gap_counter = 0;
-    size_t previously_acked_packet_index = 0;
+    int previously_acked_packet_index = 0;
+
+    int repeated_ack_timeout_counter = 0;
+    int previously_timed_out_ack_packet = 0;
 
     // do some math to figure out packet counts and leftover bytes
-    size_t packets_to_send_count = file_size / PACKET_BODY_SIZE;
-    size_t leftover_byte_count = (file_size % PACKET_BODY_SIZE);
+    int packets_to_send_count = file_size / PACKET_BODY_SIZE;
+    int leftover_byte_count = (file_size % PACKET_BODY_SIZE);
     if (leftover_byte_count > 0)
         packets_to_send_count++; // make sure we count those leftover bytes
 
     long total_sent_len = 0;
-    size_t packet_size;
-    for (size_t packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
+    int packet_size;
+    for (int packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
         packet_size = get_new_packet_size(packet_index, packets_to_send_count, leftover_byte_count);
 
         // does this packet need an ack?
@@ -213,7 +252,13 @@ void send_file(char* const& host, int port, char* const& file_buffer, size_t fil
 
         if (needs_ack) {
             // get ack
-            handle_ack(packet_index, previously_acked_packet_index, ack_gap_counter, resources);
+            handle_ack(
+                    packet_index,
+                    previously_timed_out_ack_packet,
+                    repeated_ack_timeout_counter,
+                    previously_acked_packet_index,
+                    ack_gap_counter,
+                    resources);
         }
     }
 
@@ -236,7 +281,6 @@ int main(int argc, char* argv[]) {
 
     // port num
     char* port_num_arg = argv[2];
-    int port_num = std::stoi(port_num_arg);
 
     // file path
     char* file_path_arg = argv[3];
@@ -252,6 +296,6 @@ int main(int argc, char* argv[]) {
     char* file_buffer = new char[file_length];
     file_stream.read(file_buffer, file_length);
 
-    send_file(host_address_arg, port_num, file_buffer, file_length);
+    send_file(host_address_arg, port_num_arg, file_buffer, file_length);
     return 0;
 }
