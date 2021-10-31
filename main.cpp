@@ -293,6 +293,11 @@ int main(int argc, char* argv[]) {
     file_stream.clear();
     file_stream.seekg(0, std::ios_base::beg);
 
+    if (file_length <= 0) {
+        std::cout << "File \"" << path << "\" does not exist" << std::endl;
+        return 1;
+    }
+
     char* file_buffer = new char[file_length];
     file_stream.read(file_buffer, file_length);
 
