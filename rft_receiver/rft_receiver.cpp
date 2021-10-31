@@ -121,6 +121,8 @@ void handle_packet_data(
 /** Handle sending or not sending an ACK packet. **/
 void handle_ack(int socket_fd, const sockaddr_in& remote_addr, s_packet_header* const& packet_header) {
 #if TESTING_UNRELIABILITY
+    // In case I need to test the reliability under unreliable conditions.
+    // TODO: make more unreliable
     uint32_t current_ms = get_current_millisecond();
     bool should_send_ack = current_ms % 2 == 0;
 #elif !TESTING_UNRELIABILITY
@@ -134,8 +136,8 @@ void handle_ack(int socket_fd, const sockaddr_in& remote_addr, s_packet_header* 
                 socket_fd,
                 remote_addr);
         if (!ack_sent_successfully) {
-            // todo: check this again
-            std::cout << "Error sending ack for packet " << packet_header->packet_num << std::endl;
+            debug("Error sending ack for packet ");
+            debug(packet_header->packet_num, '\n');
         }
     }
 }

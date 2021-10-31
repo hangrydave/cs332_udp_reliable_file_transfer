@@ -2,8 +2,8 @@
 // Created by david on 10/30/21.
 //
 
-#ifndef RFT_SENDER_COMMON_H
-#define RFT_SENDER_COMMON_H
+#ifndef UDP_RFT_COMMON_H
+#define UDP_RFT_COMMON_H
 
 #include <arpa/inet.h>
 #include <chrono>
@@ -45,7 +45,7 @@ uint32_t get_current_millisecond() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void debug(const char* msg, const char trailing = NULL) {
+void debug(const char* msg, const char trailing = '\0') {
 #if DEBUG
     std::cout << msg;
     if (trailing)
@@ -53,7 +53,7 @@ void debug(const char* msg, const char trailing = NULL) {
 #endif
 }
 
-void debug(const long& msg, const char trailing = NULL) {
+void debug(const long& msg, const char trailing = '\0') {
 #if DEBUG
     std::cout << msg;
     if (trailing)
@@ -61,4 +61,4 @@ void debug(const long& msg, const char trailing = NULL) {
 #endif
 }
 
-#endif //RFT_SENDER_COMMON_H
+#endif //UDP_RFT_COMMON_H
