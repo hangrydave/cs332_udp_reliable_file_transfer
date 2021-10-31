@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.17)
+# this needs to run on a machine that has cmake 3.10
+# cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.10)
+
 project(udp_reliable_file_transfer)
 
 set(CMAKE_CXX_STANDARD 14)
