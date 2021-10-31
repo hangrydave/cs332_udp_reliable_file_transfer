@@ -44,7 +44,7 @@ int string_to_int(char* const& s) {
     }
 }
 
-void get_printable_ip_addr(const sockaddr_in& addr, char*& buffer) {
+void get_printable_address(const sockaddr_in& addr, char*& buffer) {
     int buffer_size = INET_ADDRSTRLEN;
     buffer = new char[buffer_size];
     inet_ntop(AF_INET, &addr.sin_addr, buffer, buffer_size);

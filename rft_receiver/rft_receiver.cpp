@@ -61,7 +61,7 @@ int receive_packet(
     packet_body_size = received_packet_size - PACKET_HEADER_SIZE;
 
     char* addr_buffer;
-    get_printable_ip_addr(remote_addr, addr_buffer);
+    get_printable_address(remote_addr, addr_buffer);
     debug("Received ");
     debug(received_packet_size);
     debug(" bytes in packet #");
@@ -199,6 +199,10 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
         if (first_connection_id == -1) {
             // grab the very first connection id
             first_connection_id = packet_header->connection_id;
+
+            char* addr;
+            get_printable_address(remote_addr, addr);
+            std::cout << "Started receiving from " << addr << "..." << std::endl;
         } else if (packet_header->connection_id != first_connection_id) {
             // different connection; ignore
             continue;
@@ -228,7 +232,7 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
     }
 
     // dump the sender's address in a readable way
-    get_printable_ip_addr(remote_addr, sender_address_buffer);
+    get_printable_address(remote_addr, sender_address_buffer);
     return true;
 }
 
