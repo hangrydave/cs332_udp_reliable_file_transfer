@@ -18,11 +18,13 @@ struct s_sender_resources {
     socklen_t receiver_addr_len;
 };
 
+/** Get a unique connection id. **/
 uint32_t get_connection_id() {
     uint32_t id = get_current_millisecond();
     return id;
 }
 
+/** Setup some networking resources. **/
 void setup_resources(int port, s_sender_resources& resources) {
     resources = {};
 
@@ -53,17 +55,13 @@ void setup_resources(int port, s_sender_resources& resources) {
     setsockopt(resources.socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*) &tv, sizeof(tv));
 }
 
+/** Send a packet containing a portion of a file's data. **/
 int send_packet(
         char* const& file_buffer,
-        uint32_t file_size,
         int packet_index,
         int packet_body_size,
         bool request_ack,
         const s_sender_resources& resources,
-//        uint32_t connection_id,
-//        int socket_fd,
-//        const sockaddr_in& receiver_addr,
-//        const socklen_t& receiver_addr_len,
         long& total_sent_len) {
     // assemble the packet
     char* packet_buffer = new char[PACKET_HEADER_SIZE + packet_body_size];
@@ -72,7 +70,7 @@ int send_packet(
     s_packet_header* header = reinterpret_cast<s_packet_header*>(packet_buffer);
     header->connection_id = resources.connection_id;
     header->packet_num = packet_index;
-    header->total_file_size = file_size;
+    header->total_file_size = resources.file_size;
     header->ack = request_ack;
 
     debug("packet header: ");
@@ -103,6 +101,7 @@ int send_packet(
             sizeof(resources.receiver_addr));
 }
 
+/** Wait for an ACK packet. **/
 int get_ack(int packet_num, s_sender_resources& resources) {
     s_ack ack;
     int received_len = recvfrom(
@@ -121,26 +120,57 @@ int get_ack(int packet_num, s_sender_resources& resources) {
         debug(ack.connection_id, '\n');
         return SUCCESS_ACK;
     } else if (received_len == -1) {
-        // timeout!
         return ERROR_ACK_TIMEOUT;
     }
-    // ?????
     return ERROR_ACK_OTHER;
 }
 
-void send_file(
-        char* const& host,
-        int port,
-        char* const& file_buffer,
-        size_t file_size) {
+/** Figure out what size a new packet should be. **/
+size_t get_new_packet_size(size_t packet_index, size_t packets_to_send_count, size_t leftover_byte_count) {
+    if (packet_index == packets_to_send_count - 1 && leftover_byte_count > 0) {
+        // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
+        return PACKET_HEADER_SIZE + leftover_byte_count;
+    }
+    return PACKET_TOTAL_SIZE;
+}
+
+/** Handle an ACK packet coming from the receiver. **/
+void handle_ack(size_t packet_index, size_t& previously_acked_packet_index, int& ack_gap_counter, s_sender_resources& resources) {
+    int ack_result = get_ack(packet_index, resources);
+    switch (ack_result) {
+        case SUCCESS_ACK:
+            previously_acked_packet_index = packet_index;
+            ack_gap_counter++;
+
+            debug("ACK gap=");
+            debug(ack_gap_counter, '\n');
+            break;
+        case ERROR_ACK_TIMEOUT:
+            std::cout << "\nTimeout waiting for ACK at packet " << packet_index << std::endl;
+
+            // revert back to the packet after the previously acked one
+            ack_gap_counter = 0;
+            packet_index = previously_acked_packet_index;
+            debug("Rewinding to packet ");
+            debug(packet_index);
+            debug(" and resetting ack_gap_counter to 0", '\n');
+            break;
+        case ERROR_ACK_OTHER:
+            std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
+            break;
+        default:
+            break;
+    }
+}
+
+/** Send a file to a receiver. **/
+void send_file(char* const& host, int port, char* const& file_buffer, size_t file_size) {
     std::cout << "Sending " << file_size << " bytes to " << host << "..." << std::endl;
 
     // setup socket
-    s_sender_resources resources;
-//    int socket_fd;
-//    sockaddr_in receiver_addr;
-//    socklen_t receiver_addr_len;
-    setup_resources(port, resources);//socket_fd, receiver_addr, receiver_addr_len);
+    s_sender_resources resources = {};
+    setup_resources(port, resources);
+    resources.file_size = file_size;
 
     // ack things
     int ack_gap_counter = 0;
@@ -153,15 +183,9 @@ void send_file(
         packets_to_send_count++; // make sure we count those leftover bytes
 
     long total_sent_len = 0;
-    size_t packet_size = PACKET_TOTAL_SIZE;
+    size_t packet_size;
     for (size_t packet_index = 0; packet_index < packets_to_send_count; packet_index++) {
-        if (packet_index == packets_to_send_count - 1 && leftover_byte_count > 0) {
-            // if this is the last packet and there are any leftover bytes, then this is the leftover byte packet
-            packet_size = PACKET_HEADER_SIZE + leftover_byte_count;
-        }
-
-        // for clarity's sake
-        int packet_num = packet_index;
+        packet_size = get_new_packet_size(packet_index, packets_to_send_count, leftover_byte_count);
 
         // does this packet need an ack?
         bool needs_ack = packet_index - previously_acked_packet_index == ack_gap_counter;
@@ -169,18 +193,14 @@ void send_file(
         // send the dang thing
         int sent_count = send_packet(
                 file_buffer,
-                file_size,
-                packet_num,
+                packet_index,
                 packet_size,
                 needs_ack,
                 resources,
-//                connection_id,
-//                socket_fd,
-//                receiver_addr,
-//                receiver_addr_len,
                 total_sent_len);
 
         if (sent_count < 0) {
+            // Houston, we've got a problem
             std::cout << "Error sending packet; exiting" << std::endl;
             exit(1);
         }
@@ -193,29 +213,7 @@ void send_file(
 
         if (needs_ack) {
             // get ack
-            int ack_result = get_ack(packet_num, resources);
-            switch (ack_result) {
-                case SUCCESS_ACK:
-                    previously_acked_packet_index = packet_index;
-                    ack_gap_counter++;
-
-                    debug("ACK gap=");
-                    debug(ack_gap_counter, '\n');
-                    break;
-                case ERROR_ACK_TIMEOUT:
-                    std::cout << "\nTimeout waiting for ACK at packet " << packet_num << std::endl;
-
-                    // revert back to the packet after the previously acked one
-                    ack_gap_counter = 0;
-                    packet_index = previously_acked_packet_index;
-                    debug("Rewinding to packet ");
-                    debug(packet_index);
-                    debug(" and resetting ack_gap_counter to 0", '\n');
-                    break;
-                case ERROR_ACK_OTHER:
-                    std::cout << "\nWARNING: SOMETHING SPOOKY HAPPENED (VERY SCARY!!!)" << std::endl;
-                    break;
-            }
+            handle_ack(packet_index, previously_acked_packet_index, ack_gap_counter, resources);
         }
     }
 
