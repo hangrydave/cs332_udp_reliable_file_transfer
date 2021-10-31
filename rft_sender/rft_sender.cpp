@@ -29,7 +29,11 @@ uint32_t get_connection_id() {
 
 /** Setup some networking resources. **/
 void setup_resources(char* const& host, char* const& port, s_sender_resources& resources) {
-    int port_num = std::stoi(port);
+    int port_num = string_to_int(port);
+    if (port_num < 0) {
+        std::cout << "Invalid port given; please provide a valid port number from 1 to 65535" << std::endl;
+        exit(1);
+    }
 
     resources = {};
 
@@ -269,12 +273,12 @@ void send_file(char* const& host, char* const& port, char* const& file_buffer, i
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 4) {
-        std::cout << "You provided too many arguments; only the first 3 will be used.\n";
-    }
-
-    if (argc < 4) {
-        std::cout << "Not enough arguments provided; please provide a host address, a port number, and a file path." << std::endl;
+    if (argc != 4) {
+#if VERBOSE
+        std::cout << "Usage: rft_sender_verbose <host address> <port number> <file_path>\n\nExample: rft_sender_verbose 127.0.0.1 22222 file_to_send" << std::endl;
+#else
+        std::cout << "Usage: rft_sender <host address> <port number> <file_path>\n\nExample: rft_sender 127.0.0.1 22222 file_to_send" << std::endl;
+#endif
         return 1;
     }
 

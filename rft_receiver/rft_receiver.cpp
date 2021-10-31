@@ -241,18 +241,22 @@ bool receive_file(int port, char*& file_buffer, int& file_size, char*& sender_ad
 }
 
 int main(int argc, char* argv[]) {
-    if (argc > 3) {
-        std::cout << "You provided too many arguments; only the first 2 will be used.\n";
-    }
-
-    if (argc < 3) {
-        std::cout << "Not enough arguments provided; please provide a port number and a file file_path." << std::endl;
+    if (argc != 3) {
+#if VERBOSE
+        std::cout << "Usage: rft_receiver_verbose <port number> <file_path>\n\nExample: rft_receiver_verbose 22222 received_file" << std::endl;
+#else
+        std::cout << "Usage: rft_receiver <port number> <file_path>\n\nExample: rft_receiver 22222 received_file" << std::endl;
+#endif
         return 1;
     }
 
     // get port num
     char* port_num_arg = argv[1];
-    int port = std::stoi(port_num_arg);
+    int port = string_to_int(port_num_arg);
+    if (port < 0) {
+        std::cout << "Invalid port given; please provide a valid port number from 1 to 65535" << std::endl;
+        return 1;
+    }
 
     // get file path
     char* file_path_arg = argv[2];

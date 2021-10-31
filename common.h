@@ -35,6 +35,16 @@ struct s_ack {
 #pragma pack(pop)
 static_assert(sizeof(s_ack) == ACK_SIZE, "s_ack != ACK_SIZE");
 
+/** Convert a char* to an int. Returns the converted number or -1 if an error occurred. **/
+int string_to_int(char* const& s) {
+    try {
+        int num = std::stoi( s );
+        return num;
+    } catch (std::invalid_argument) {
+        return -1;
+    }
+}
+
 void get_printable_ip_addr(const sockaddr_in& addr, char*& buffer) {
     int buffer_size = INET_ADDRSTRLEN;
     buffer = new char[buffer_size];
@@ -46,7 +56,7 @@ uint32_t get_current_millisecond() {
 }
 
 void debug(const char* msg, const char trailing = '\0') {
-#if DEBUG
+#if VERBOSE
     std::cout << msg;
     if (trailing)
         std::cout << trailing;
@@ -54,7 +64,7 @@ void debug(const char* msg, const char trailing = '\0') {
 }
 
 void debug(const long& msg, const char trailing = '\0') {
-#if DEBUG
+#if VERBOSE
     std::cout << msg;
     if (trailing)
         std::cout << trailing;
