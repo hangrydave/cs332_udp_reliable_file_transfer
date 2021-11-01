@@ -1,4 +1,4 @@
-# CS332 - Reliable File Transferal over UDP
+# CS332 - Reliable File Transferral over UDP
 
 This C++ project implementing a reliable file transferal protocol over UDP was written as an assignment for CS332: Advanced Computer Networking.
 
